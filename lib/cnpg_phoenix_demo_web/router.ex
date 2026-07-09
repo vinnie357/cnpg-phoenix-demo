@@ -18,6 +18,7 @@ defmodule CnpgPhoenixDemoWeb.Router do
     pipe_through :browser
 
     live "/", HomeLive
+    live "/tables/:repo/:table", TableLive
   end
 
   # Other scopes may use custom stacks.

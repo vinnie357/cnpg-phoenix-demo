@@ -14,21 +14,35 @@ defmodule CnpgPhoenixDemo.Application do
       CnpgPhoenixDemo.Release.migrate()
     end
 
-    children = [
-      CnpgPhoenixDemoWeb.Telemetry,
-      CnpgPhoenixDemo.Repo,
-      {DNSCluster, query: Application.get_env(:cnpg_phoenix_demo, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: CnpgPhoenixDemo.PubSub},
-      # Start a worker by calling: CnpgPhoenixDemo.Worker.start_link(arg)
-      # {CnpgPhoenixDemo.Worker, arg},
-      # Start to serve requests, typically the last entry
-      CnpgPhoenixDemoWeb.Endpoint
-    ]
+    children =
+      [
+        CnpgPhoenixDemoWeb.Telemetry,
+        CnpgPhoenixDemo.Repo,
+        CnpgPhoenixDemo.ReplicaRepo
+      ] ++
+        analytics_children() ++
+        [
+          {DNSCluster,
+           query: Application.get_env(:cnpg_phoenix_demo, :dns_cluster_query) || :ignore},
+          {Phoenix.PubSub, name: CnpgPhoenixDemo.PubSub},
+          # Start to serve requests, typically the last entry
+          CnpgPhoenixDemoWeb.Endpoint
+        ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: CnpgPhoenixDemo.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # The analytics repo is optional: no ANALYTICS_DATABASE_URL ⇒ no config
+  # ⇒ not started (and its UI sections hide).
+  defp analytics_children do
+    if Application.get_env(:cnpg_phoenix_demo, CnpgPhoenixDemo.AnalyticsRepo) do
+      [CnpgPhoenixDemo.AnalyticsRepo]
+    else
+      []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

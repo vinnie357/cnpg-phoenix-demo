@@ -8,7 +8,10 @@ defmodule CnpgPhoenixDemo.Release do
   def migrate do
     load_app()
 
-    for repo <- repos() do
+    # Only migrate repos that are actually configured at runtime — the
+    # analytics repo is optional (no ANALYTICS_DATABASE_URL ⇒ no config
+    # ⇒ skipped instead of crashing boot).
+    for repo <- repos(), Application.get_env(@app, repo) != nil do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
   end

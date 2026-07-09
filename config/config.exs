@@ -8,7 +8,7 @@
 import Config
 
 config :cnpg_phoenix_demo,
-  ecto_repos: [CnpgPhoenixDemo.Repo],
+  ecto_repos: [CnpgPhoenixDemo.Repo, CnpgPhoenixDemo.AnalyticsRepo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint

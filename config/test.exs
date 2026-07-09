@@ -13,6 +13,26 @@ config :cnpg_phoenix_demo, CnpgPhoenixDemo.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
+config :cnpg_phoenix_demo, CnpgPhoenixDemo.AnalyticsRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "cnpg_phoenix_demo_analytics_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: System.schedulers_online() * 2
+
+# Replica reads must see sandboxed writes — use the primary repo in tests.
+# ReplicaRepo itself is exercised in the container smoke test, not here.
+config :cnpg_phoenix_demo, CnpgPhoenixDemo.ReplicaRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "cnpg_phoenix_demo_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 2
+
+config :cnpg_phoenix_demo, :replica_repo, CnpgPhoenixDemo.Repo
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :cnpg_phoenix_demo, CnpgPhoenixDemoWeb.Endpoint,

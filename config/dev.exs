@@ -10,6 +10,21 @@ config :cnpg_phoenix_demo, CnpgPhoenixDemo.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# Dev has no replica — point the read pool at the same database.
+config :cnpg_phoenix_demo, CnpgPhoenixDemo.ReplicaRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "cnpg_phoenix_demo_dev",
+  pool_size: 5
+
+config :cnpg_phoenix_demo, CnpgPhoenixDemo.AnalyticsRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "cnpg_phoenix_demo_analytics_dev",
+  pool_size: 5
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

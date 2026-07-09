@@ -36,8 +36,10 @@ defmodule CnpgPhoenixDemo.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(CnpgPhoenixDemo.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    for repo <- [CnpgPhoenixDemo.Repo, CnpgPhoenixDemo.AnalyticsRepo] do
+      pid = Ecto.Adapters.SQL.Sandbox.start_owner!(repo, shared: not tags[:async])
+      on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    end
   end
 
   @doc """

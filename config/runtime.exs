@@ -48,13 +48,32 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # Three pools against max_connections=100: keep each modest.
+  pool_size = String.to_integer(System.get_env("POOL_SIZE") || "5")
+
   config :cnpg_phoenix_demo, CnpgPhoenixDemo.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: pool_size,
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
     socket_options: maybe_ipv6
+
+  # Read pool: CNPG's -ro service when provided, else the primary URL
+  # (single-instance clusters and the fallback path keep working).
+  config :cnpg_phoenix_demo, CnpgPhoenixDemo.ReplicaRepo,
+    url: System.get_env("DATABASE_RO_URL") || database_url,
+    pool_size: pool_size,
+    socket_options: maybe_ipv6
+
+  # Optional second CNPG cluster (metrics-db). Unset ⇒ repo not configured,
+  # not started, not migrated; analytics UI sections hide.
+  if analytics_url = System.get_env("ANALYTICS_DATABASE_URL") do
+    config :cnpg_phoenix_demo, CnpgPhoenixDemo.AnalyticsRepo,
+      url: analytics_url,
+      pool_size: pool_size,
+      socket_options: maybe_ipv6
+  end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
