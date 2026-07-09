@@ -7,13 +7,44 @@ defmodule CnpgPhoenixDemo.Status do
 
   alias CnpgPhoenixDemo.Repo
 
+  @unavailable %{
+    version: "unavailable",
+    database: "unavailable",
+    user: "unavailable",
+    cluster_name: nil,
+    server: nil
+  }
+
   def database_info do
-    case Repo.query("SELECT version(), current_database(), current_user", []) do
-      {:ok, %{rows: [[version, database, user]]}} ->
-        %{version: version, database: database, user: user}
+    query = """
+    SELECT version(), current_database(), current_user,
+           current_setting('cluster_name'),
+           host(inet_server_addr()), inet_server_port()
+    """
+
+    case Repo.query(query, []) do
+      {:ok, %{rows: [[version, database, user, cluster_name, addr, port]]}} ->
+        %{
+          version: version,
+          database: database,
+          user: user,
+          # CNPG sets cluster_name to the Cluster resource name; empty on vanilla postgres
+          cluster_name: if(cluster_name in [nil, ""], do: nil, else: cluster_name),
+          server: if(addr, do: "#{addr}:#{port}")
+        }
 
       {:error, _reason} ->
-        %{version: "unavailable", database: "unavailable", user: "unavailable"}
+        @unavailable
+    end
+  end
+
+  # host:port the app dialed, parsed from DATABASE_URL — never credentials.
+  def connected_host do
+    with url when is_binary(url) <- System.get_env("DATABASE_URL"),
+         %URI{host: host} = uri when is_binary(host) <- URI.parse(url) do
+      "#{host}:#{uri.port || 5432}"
+    else
+      _ -> "unknown"
     end
   end
 

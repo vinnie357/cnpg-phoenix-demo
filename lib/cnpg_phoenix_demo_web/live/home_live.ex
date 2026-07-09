@@ -10,6 +10,7 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
      socket
      |> assign(:page_title, "CNPG Phoenix Demo")
      |> assign(:db, Status.database_info())
+     |> assign(:connected_host, Status.connected_host())
      |> assign(:pod, Status.pod_name())
      |> assign(:node, Status.node_name())
      |> assign(:form, to_form(Notes.change_note()))
@@ -38,6 +39,17 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
 
       <section id="status" class="card bg-base-200 p-4 text-sm space-y-1">
         <h2 class="font-semibold">Cluster wiring</h2>
+        <p :if={@db.cluster_name}>
+          CNPG cluster: <span id="cnpg-cluster" class="font-semibold">{@db.cluster_name}</span>
+          (postgres <code>cluster_name</code>, set by the operator)
+        </p>
+        <p>
+          Connected via <span id="connected-host" class="font-semibold">{@connected_host}</span>
+          <span :if={@db.server}>
+            → server <span id="pg-server">{@db.server}</span>
+          </span>
+          <span class="opacity-60">(host from the CNPG-generated secret's <code>uri</code>)</span>
+        </p>
         <p>Postgres: <span id="pg-version">{@db.version}</span></p>
         <p>
           Database: <span id="pg-database">{@db.database}</span>
