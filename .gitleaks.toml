@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+# The Phoenix generator hardcodes non-production secret_key_base placeholder
+# values for local dev/test. Production reads SECRET_KEY_BASE from the
+# environment (config/runtime.exs).
+[allowlist]
+description = "Phoenix generator dev/test placeholder secrets"
+paths = [
+  '''config/dev\.exs''',
+  '''config/test\.exs''',
+]
