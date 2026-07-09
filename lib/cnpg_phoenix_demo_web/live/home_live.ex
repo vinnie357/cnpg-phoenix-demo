@@ -51,113 +51,178 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
     end
   end
 
+  defp pg_version_short(version) do
+    case Regex.run(~r/^PostgreSQL (\S+)/, version) do
+      [_, v] -> v
+      _ -> version
+    end
+  end
+
+  defp pg_platform(version) do
+    case Regex.run(~r/on (\S+?),/, version) do
+      [_, triple] -> triple |> String.split("-") |> hd()
+      _ -> nil
+    end
+  end
+
+  defp standby_count({:ok, standbys}), do: length(standbys)
+  defp standby_count(_), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <h1 class="text-lg font-semibold">CloudNativePG + Phoenix demo</h1>
-      <p class="text-sm opacity-70">
-        Postgres: {@version} · app pod <span id="pod-name">{@pod}</span>
-        on node <span id="node-name">{@node}</span>
-      </p>
+      <div>
+        <h1 class="text-2xl font-semibold text-balance">CloudNativePG topology, live</h1>
+        <p class="mt-1 text-sm opacity-70">
+          Served by pod <span id="pod-name" class="font-mono">{@pod}</span>
+          on node <span id="node-name" class="font-mono">{@node}</span>
+          — every value below is read over this page's own database connections.
+        </p>
+      </div>
 
-      <section id="topology" class="card bg-base-200 p-4 text-sm space-y-2">
-        <h2 class="font-semibold">Topology — where each connection pool landed</h2>
-        <table class="table-auto w-full text-left">
-          <thead>
-            <tr class="opacity-60">
-              <th class="pr-4">pool</th>
-              <th class="pr-4">dialed</th>
-              <th class="pr-4">server</th>
-              <th class="pr-4">CNPG cluster</th>
-              <th>role</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={t <- @topology} id={"topo-#{t.role |> String.replace(~r/\W+/, "-")}"}>
-              <td class="pr-4 font-semibold">{t.role}</td>
-              <td class="pr-4">{t.dialed}</td>
-              <td class="pr-4">{t.server}</td>
-              <td class="pr-4">{t.cluster_name || "—"}</td>
-              <td>
-                <%= case t.in_recovery do %>
-                  <% true -> %>
-                    <span class="text-info">hot standby</span>
-                  <% false -> %>
-                    <span class="text-success">primary</span>
-                  <% _ -> %>
-                    —
-                <% end %>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div id="replication">
-          <%= case @replication do %>
-            <% {:ok, []} -> %>
-              <p class="opacity-60">No streaming standbys (single-instance cluster).</p>
-            <% {:ok, standbys} -> %>
-              <p>
-                Streaming standbys (pg_stat_replication):
-                <span :for={s <- standbys} class="mr-2 font-semibold">
-                  {s.name} <span class="opacity-60">({s.state}/{s.sync})</span>
+      <div class="stats stats-vertical sm:stats-horizontal w-full border border-base-300 bg-base-100">
+        <div class="stat">
+          <div class="stat-title">Postgres</div>
+          <div class="stat-value text-2xl" title={@version}>{pg_version_short(@version)}</div>
+          <div class="stat-desc">{pg_platform(@version) || "server version"}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Connection pools</div>
+          <div class="stat-value text-2xl tabular-nums">{length(@topology)}</div>
+          <div class="stat-desc">write / read / analytics</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Streaming standbys</div>
+          <div class="stat-value text-2xl tabular-nums">
+            {standby_count(@replication) || "—"}
+          </div>
+          <div class="stat-desc">pg_stat_replication</div>
+        </div>
+        <div :if={@analytics?} class="stat">
+          <div class="stat-title">Page visits</div>
+          <div id="visit-count" class="stat-value text-2xl tabular-nums">{@visits.total}</div>
+          <div class="stat-desc">stored in metrics-db</div>
+        </div>
+      </div>
+
+      <section id="topology" class="card border border-base-300 bg-base-100">
+        <div class="card-body gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider opacity-60">
+            Topology — where each pool landed
+          </h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>pool</th>
+                  <th>dialed</th>
+                  <th>server</th>
+                  <th>CNPG cluster</th>
+                  <th>role</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={t <- @topology} id={"topo-#{t.role |> String.replace(~r/\W+/, "-")}"}>
+                  <td class="font-medium whitespace-nowrap">{t.role}</td>
+                  <td class="font-mono text-xs">{t.dialed}</td>
+                  <td class="font-mono text-xs tabular-nums">{t.server}</td>
+                  <td class="font-mono text-xs">{t.cluster_name || "—"}</td>
+                  <td>
+                    <%= case t.in_recovery do %>
+                      <% true -> %>
+                        <span class="badge badge-info badge-sm whitespace-nowrap">hot standby</span>
+                      <% false -> %>
+                        <span class="badge badge-success badge-sm">primary</span>
+                      <% _ -> %>
+                        <span class="badge badge-ghost badge-sm">unknown</span>
+                    <% end %>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="replication" class="flex flex-wrap items-center gap-2 text-sm">
+            <%= case @replication do %>
+              <% {:ok, []} -> %>
+                <span class="opacity-60">No streaming standbys (single-instance cluster).</span>
+              <% {:ok, standbys} -> %>
+                <span class="opacity-60">Streaming standbys:</span>
+                <span
+                  :for={s <- standbys}
+                  class="badge badge-outline gap-1 font-mono text-xs whitespace-nowrap"
+                >
+                  {s.name} <span class="opacity-60">{s.state}/{s.sync}</span>
                 </span>
-              </p>
-            <% {:error, :needs_grant} -> %>
-              <p class="opacity-60">
-                Standbys exist but details are masked — grant pg_monitor to the app user
-                (see README).
-              </p>
-            <% {:error, _} -> %>
-              <p class="opacity-60">Replication status unavailable.</p>
-          <% end %>
+              <% {:error, :needs_grant} -> %>
+                <span class="opacity-60">
+                  Standbys exist but details are masked — grant
+                  <code class="font-mono">pg_monitor</code>
+                  to the app user (see README).
+                </span>
+              <% {:error, _} -> %>
+                <span class="opacity-60">Replication status unavailable.</span>
+            <% end %>
+          </div>
         </div>
       </section>
 
-      <section :if={@analytics?} id="visits" class="card bg-base-200 p-4 text-sm">
-        <h2 class="font-semibold">Analytics (second CNPG cluster)</h2>
-        <p>
-          Page visits recorded: <span id="visit-count" class="font-semibold">{@visits.total}</span>
-          <span :if={@visits.last} class="opacity-60">
-            — last from pod {@visits.last.pod} at {@visits.last.inserted_at}
-          </span>
-        </p>
+      <section id="databases" class="grid gap-6 md:grid-cols-2">
+        <div
+          :for={db <- @databases}
+          id={"db-#{db.key}"}
+          class="card border border-base-300 bg-base-100"
+        >
+          <div class="card-body gap-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider opacity-60">
+              {db.key} database <span class="normal-case tracking-normal">— {db.label}</span>
+            </h2>
+            <ul class="menu w-full p-0">
+              <li :for={table <- db.tables}>
+                <.link navigate={~p"/tables/#{db.key}/#{table.name}"} class="flex justify-between">
+                  <span class="font-mono text-sm">{table.name}</span>
+                  <span class="badge badge-ghost badge-sm tabular-nums">~{table.rows_est} rows</span>
+                </.link>
+              </li>
+            </ul>
+            <p :if={db.key == "analytics"} class="text-xs opacity-60">
+              Second CNPG cluster; a visit row is written here on every page load.
+              <span :if={@analytics? && @visits.last}>
+                Last: <span class="font-mono">{@visits.last.inserted_at}</span>
+              </span>
+            </p>
+            <p :if={db.key == "main"} class="text-xs opacity-60">
+              Browsing reads go through the replica pool (demo-db-ro).
+            </p>
+          </div>
+        </div>
       </section>
 
-      <section id="databases" class="card bg-base-200 p-4 text-sm space-y-2">
-        <h2 class="font-semibold">Databases — browse tables</h2>
-        <div :for={db <- @databases} id={"db-#{db.key}"}>
-          <h3 class="font-semibold opacity-80">
-            {db.key} <span class="opacity-60">— {db.label}</span>
-          </h3>
-          <ul class="list-disc pl-5">
-            <li :for={table <- db.tables}>
-              <.link navigate={~p"/tables/#{db.key}/#{table.name}"} class="underline">
-                {table.name}
-              </.link>
-              <span class="opacity-60">~{table.rows_est} rows</span>
+      <section id="notes" class="card border border-base-300 bg-base-100">
+        <div class="card-body gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider opacity-60">
+            Notes — writes to the primary
+          </h2>
+          <.form for={@form} id="note-form" phx-submit="save" class="join w-full">
+            <input
+              type="text"
+              name={@form[:body].name}
+              value={Phoenix.HTML.Form.normalize_value("text", @form[:body].value)}
+              placeholder="Write a note — stored in demo-db via demo-db-rw"
+              class="input join-item w-full"
+            />
+            <button class="btn btn-primary join-item">Save</button>
+          </.form>
+          <ul id="note-list" class="divide-y divide-base-200">
+            <li :for={note <- @notes} id={"note-#{note.id}"} class="flex justify-between gap-4 py-2">
+              <span class="text-sm">{note.body}</span>
+              <span class="text-xs opacity-60 font-mono tabular-nums whitespace-nowrap">
+                {note.inserted_at}
+              </span>
             </li>
           </ul>
+          <p :if={@notes == []} class="text-sm opacity-60">No notes yet — write the first one.</p>
         </div>
-      </section>
-
-      <section id="notes" class="space-y-4">
-        <.form for={@form} id="note-form" phx-submit="save">
-          <.input
-            field={@form[:body]}
-            type="text"
-            label="New note"
-            placeholder="Stored in CNPG Postgres"
-          />
-          <.button>Save note</.button>
-        </.form>
-
-        <ul id="note-list" class="list-disc pl-5 space-y-1">
-          <li :for={note <- @notes} id={"note-#{note.id}"}>
-            {note.body}
-            <span class="text-xs opacity-60">{note.inserted_at}</span>
-          </li>
-        </ul>
       </section>
     </Layouts.app>
     """

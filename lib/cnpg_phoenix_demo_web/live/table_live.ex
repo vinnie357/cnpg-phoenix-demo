@@ -32,26 +32,40 @@ defmodule CnpgPhoenixDemoWeb.TableLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <p><.link navigate={~p"/"} class="underline">&larr; back</.link></p>
-      <h1 class="text-lg font-semibold">
-        {@table} <span class="text-sm opacity-60">({@repo_key} database, first 20 rows)</span>
-      </h1>
-
-      <div class="overflow-x-auto">
-        <table id="table-rows" class="table-auto w-full text-left text-sm">
-          <thead>
-            <tr class="opacity-60">
-              <th :for={col <- @data.columns} class="pr-4">{col}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @data.rows}>
-              <td :for={value <- row} class="pr-4 align-top">{display(value)}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="breadcrumbs text-sm">
+        <ul>
+          <li><.link navigate={~p"/"}>Overview</.link></li>
+          <li><span class="opacity-60">{@repo_key} database</span></li>
+          <li><span class="font-mono">{@table}</span></li>
+        </ul>
       </div>
-      <p :if={@data.rows == []} class="opacity-60 text-sm">Table is empty.</p>
+
+      <div class="flex items-baseline gap-3">
+        <h1 class="text-2xl font-semibold font-mono">{@table}</h1>
+        <span class="badge badge-ghost badge-sm">first 20 rows</span>
+      </div>
+
+      <section class="card border border-base-300 bg-base-100">
+        <div class="card-body">
+          <div class="overflow-x-auto">
+            <table id="table-rows" class="table table-sm table-zebra">
+              <thead>
+                <tr>
+                  <th :for={col <- @data.columns} class="font-mono">{col}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={row <- @data.rows}>
+                  <td :for={value <- row} class="align-top text-sm tabular-nums">
+                    {display(value)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p :if={@data.rows == []} class="text-sm opacity-60">Table is empty.</p>
+        </div>
+      </section>
     </Layouts.app>
     """
   end
