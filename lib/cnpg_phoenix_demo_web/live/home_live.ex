@@ -6,9 +6,19 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
   alias CnpgPhoenixDemo.Notes
   alias CnpgPhoenixDemo.Status
 
+  @burst_size 20
+  @burst_interval_ms 150
+
   @impl true
   def mount(_params, _session, socket) do
     analytics? = Analytics.configured?()
+
+    # Live updates: every connected client subscribes, so a note or visit
+    # written by ANY browser (or the simulator) is pushed to ALL of them.
+    if connected?(socket) do
+      :ok = Notes.subscribe()
+      if analytics?, do: :ok = Analytics.subscribe()
+    end
 
     # Record the visit in the second cluster — only once per page load
     # (connected mount) and only when analytics is wired up.
@@ -26,6 +36,7 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
      |> assign(:node, Status.node_name())
      |> assign(:analytics?, analytics?)
      |> assign(:visits, if(analytics?, do: Analytics.stats()))
+     |> assign(:burst_left, 0)
      |> assign(:databases, databases_with_tables())
      |> assign(:form, to_form(Notes.change_note()))
      |> assign(:notes, Notes.list_notes())}
@@ -33,16 +44,45 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
 
   @impl true
   def handle_event("save", %{"note" => params}, socket) do
+    # The note list itself updates via the PubSub broadcast, same as
+    # every other connected browser.
     case Notes.create_note(params) do
       {:ok, _note} ->
-        {:noreply,
-         socket
-         |> assign(:notes, Notes.list_notes())
-         |> assign(:form, to_form(Notes.change_note()))}
+        {:noreply, assign(socket, :form, to_form(Notes.change_note()))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
+  end
+
+  def handle_event("simulate", _params, socket) do
+    if socket.assigns.burst_left > 0 or not socket.assigns.analytics? do
+      {:noreply, socket}
+    else
+      send(self(), :burst_tick)
+      {:noreply, assign(socket, :burst_left, @burst_size)}
+    end
+  end
+
+  @impl true
+  def handle_info(:burst_tick, socket) do
+    case socket.assigns.burst_left do
+      0 ->
+        {:noreply, socket}
+
+      left ->
+        {:ok, _visit} = Analytics.record_visit("simulated-traffic", Status.node_name())
+        if left > 1, do: Process.send_after(self(), :burst_tick, @burst_interval_ms)
+        {:noreply, assign(socket, :burst_left, left - 1)}
+    end
+  end
+
+  def handle_info({:visit_recorded, _visit}, socket) do
+    {:noreply, assign(socket, :visits, Analytics.stats())}
+  end
+
+  def handle_info({:note_created, _note}, socket) do
+    {:noreply, assign(socket, :notes, Notes.list_notes())}
   end
 
   defp databases_with_tables do
@@ -185,12 +225,32 @@ defmodule CnpgPhoenixDemoWeb.HomeLive do
                 </.link>
               </li>
             </ul>
-            <p :if={db.key == "analytics"} class="text-xs opacity-60">
-              Second CNPG cluster; a visit row is written here on every page load.
-              <span :if={@analytics? && @visits.last}>
-                Last: <span class="font-mono">{@visits.last.inserted_at}</span>
-              </span>
-            </p>
+            <div :if={db.key == "analytics"} class="space-y-2">
+              <p class="text-xs opacity-60">
+                Second CNPG cluster; a visit row is written here on every page load.
+                <span :if={@analytics? && @visits.last}>
+                  Last: <span class="font-mono">{@visits.last.inserted_at}</span>
+                </span>
+              </p>
+              <div class="flex items-center gap-3">
+                <button
+                  id="simulate-traffic"
+                  phx-click="simulate"
+                  class="btn btn-primary btn-sm"
+                  disabled={@burst_left > 0}
+                >
+                  <span :if={@burst_left > 0} class="loading loading-spinner loading-xs"></span>
+                  <%= if @burst_left > 0 do %>
+                    Writing… {@burst_left} left
+                  <% else %>
+                    Simulate traffic (20 rows)
+                  <% end %>
+                </button>
+                <span class="text-xs opacity-60">
+                  Watch the visit count climb — open a second window, it climbs there too.
+                </span>
+              </div>
+            </div>
             <p :if={db.key == "main"} class="text-xs opacity-60">
               Browsing reads go through the replica pool (demo-db-ro).
             </p>

@@ -9,14 +9,26 @@ defmodule CnpgPhoenixDemo.Analytics do
   alias CnpgPhoenixDemo.Analytics.Visit
   alias CnpgPhoenixDemo.AnalyticsRepo
 
+  @topic "visits"
+
   def configured? do
     Application.get_env(:cnpg_phoenix_demo, AnalyticsRepo) != nil
   end
 
+  def subscribe do
+    Phoenix.PubSub.subscribe(CnpgPhoenixDemo.PubSub, @topic)
+  end
+
   def record_visit(pod, node) do
-    %Visit{}
-    |> Visit.changeset(%{"pod" => pod, "node" => node})
-    |> AnalyticsRepo.insert()
+    result =
+      %Visit{}
+      |> Visit.changeset(%{"pod" => pod, "node" => node})
+      |> AnalyticsRepo.insert()
+
+    with {:ok, visit} <- result do
+      :ok = Phoenix.PubSub.broadcast(CnpgPhoenixDemo.PubSub, @topic, {:visit_recorded, visit})
+      {:ok, visit}
+    end
   end
 
   def stats do
