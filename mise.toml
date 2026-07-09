@@ -1,0 +1,20 @@
+[tools]
+erlang = "28.5"
+elixir = "1.19.5-otp-28"
+
+[tasks.setup]
+description = "Fetch deps and compile"
+run = "mix deps.get && mix compile"
+
+[tasks.test]
+description = "Run the test suite"
+run = "mix test"
+
+[tasks.ci]
+description = "Full quality gate: format check + compile warnings-as-errors + tests"
+run = """
+mix deps.get
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix test --warnings-as-errors
+"""
