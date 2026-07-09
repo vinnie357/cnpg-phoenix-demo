@@ -8,17 +8,8 @@ import Config
 config :cnpg_phoenix_demo, CnpgPhoenixDemoWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
-# Force using SSL in production. This also sets the "strict-security-transport" header,
-# known as HSTS. If you have a health check endpoint, you may want to exclude it below.
-# Note `:force_ssl` is required to be set at compile-time.
-config :cnpg_phoenix_demo, CnpgPhoenixDemoWeb.Endpoint,
-  force_ssl: [
-    rewrite_on: [:x_forwarded_proto],
-    exclude: [
-      # paths: ["/health"],
-      hosts: ["localhost", "127.0.0.1"]
-    ]
-  ]
+# This demo is served over plain HTTP behind a Gateway API HTTPRoute, so the
+# generator's default force_ssl/HSTS redirect is disabled.
 
 # Do not print debug messages in production
 config :logger, level: :info
