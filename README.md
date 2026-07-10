@@ -8,6 +8,8 @@ user, plus the pod and node it runs on.
 Built for the [kina](https://github.com/vinnie357/kina) CNPG examples
 (`kina-cli/examples/demos/cnpg-app/`), but it works against any Postgres.
 
+![Dashboard: topology across an HA CNPG cluster and a second analytics cluster, with live-updating visits and notes](docs/screenshot.png)
+
 ## Image
 
 Multi-arch (`linux/amd64`, `linux/arm64`) images are published on version tags:
