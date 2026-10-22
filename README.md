@@ -50,7 +50,7 @@ mix ecto.create
 mix phx.server
 ```
 
-Run the quality gate (format check, warnings-as-errors compile, tests):
+Run the quality gate (format check, `audit:hex`, `audit:deps` and `audit:advisory-doc`, the audit-script tests, warnings-as-errors compile, tests). The two dependency audits need network access:
 
 ```sh
 mise run ci
