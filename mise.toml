@@ -55,12 +55,20 @@ run = "nu test/test-deps-audit.nu"
 description = "Audit task wiring, allow-list parity between mix.exs and .mix-audit-ignore, and the exceptions doc structure"
 run = "nu test/test-audit-wiring.nu"
 
+[tasks."audit:otp"]
+description = "Fail when the mise.toml erlang/elixir pins, the running ERTS or the Dockerfile OTP/Elixir ARGs are below the 28.5.0.8 / 1.19.6 floor or disagree"
+run = "nu scripts/otp-audit.nu"
+
+[tasks."test:otp-audit"]
+description = "Fixture and fake-erl tests for scripts/otp-audit.nu"
+run = "nu test/test-otp-audit.nu"
+
 [tasks."test:advisory-doc"]
 description = "Tests for scripts/advisory-doc.nu"
 run = "nu test/test-advisory-doc.nu"
 
 [tasks.ci]
 description = "Full quality gate: format check, audits and audit tests (parallel), then compile (warnings-as-errors), then tests"
-depends = ["format-check", "audit:hex", "audit:deps", "audit:advisory-doc", "test:hex-audit", "test:hex-audit-offline", "test:deps-audit", "test:audit-wiring", "test:advisory-doc"]
+depends = ["format-check", "audit:hex", "audit:deps", "audit:advisory-doc", "test:hex-audit", "test:hex-audit-offline", "test:deps-audit", "test:audit-wiring", "test:advisory-doc", "audit:otp", "test:otp-audit"]
 # compile runs here, not in depends: mix deps.audit compiles deps and would race it on _build.
 run = ["mise run compile", "mix test --warnings-as-errors"]
