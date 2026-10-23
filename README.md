@@ -50,7 +50,7 @@ mix ecto.create
 mix phx.server
 ```
 
-Run the quality gate (format check, `audit:hex`, `audit:deps` and `audit:advisory-doc`, the audit-script tests, warnings-as-errors compile, tests). The two dependency audits need network access:
+Run the quality gate (format check, `audit:hex`, `audit:deps`, `audit:advisory-doc` and `audit:otp` (needs the pinned Erlang on PATH, which mise provides), the audit-script tests, warnings-as-errors compile, tests). The two dependency audits need network access:
 
 ```sh
 mise run ci

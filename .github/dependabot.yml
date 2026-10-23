@@ -1,7 +1,13 @@
+# No docker ecosystem on purpose: the Dockerfile builds FROM an ARG-built image
+# (FROM ${BUILDER_IMAGE}), which Dependabot cannot bump, and an OTP/Elixir bump must
+# move the mise.toml pins and the Dockerfile ARGs together. audit:otp guards that (#9).
 version: 2
 updates:
   - package-ecosystem: "mix"
     directory: "/"
+    # The positive-control lock is vulnerable on purpose; never "fix" it.
+    exclude-paths:
+      - "test/fixtures/deps_audit/**"
     schedule:
       interval: "weekly"
   - package-ecosystem: "github-actions"
