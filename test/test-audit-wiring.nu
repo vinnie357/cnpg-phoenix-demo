@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# test-audit-wiring.nu — T2-T5: audit gate wiring, allow-list parity and the STRIDE doc (#1).
+# test-audit-wiring.nu — T2-T7: audit gate wiring, allow-list parity and the STRIDE doc (#1).
 #
 # Reads files only; evaluates nothing. Each section runs even when an earlier
 # one fails, so one run reports every red section. Exits 1 on any failure.
@@ -46,6 +46,31 @@
 #   the analysis in place, and git history keeps past reviews. Nothing here
 #   requires keeping old reviews.
 # T5 no orphans: every `## <ID>` section in the doc is on both allow-lists.
+# T6 OTP/Elixir gate wiring (#9):
+#   - [tasks."audit:otp"] runs exactly `nu scripts/otp-audit.nu` (no flags),
+#     [tasks."test:otp-audit"] runs exactly `nu test/test-otp-audit.nu`; both
+#     are in tasks.ci.depends.
+#   - scripts/otp-audit.nu has exactly one `const otp_floor` line, equal to
+#     `const otp_floor = "28.5.0.8"`, and exactly one `const elixir_floor`
+#     line, equal to `const elixir_floor = "1.19.6"`.
+#   - mise.toml stays the only OTP pin: ci.yml has no `setup-beam`,
+#     `otp-version`, `docker build` or `build-args`.
+#   - audit:otp trusts the Dockerfile ARG defaults, so nothing may override
+#     them: release.yml `build-args` names none of OTP_VERSION, ELIXIR_VERSION,
+#     DEBIAN_VERSION, BUILDER_IMAGE, RUNNER_IMAGE. release.yml currently has no
+#     `build-args` key at all; an absent key passes. Fixture cases prove the
+#     reader sees block and inline values.
+#   - README.md names `audit:otp` (the quality-gate sentence).
+# T7 dependabot, .github/dependabot.yml parsed as YAML:
+#   - version 2; `updates` covers exactly github-actions and mix (no docker:
+#     an ARG-built FROM cannot be bumped by Dependabot, and an OTP bump must
+#     move mise.toml and the Dockerfile ARGs together), each with directory "/"
+#     (no `directories`) and a weekly schedule.
+#   - the mix entry lists "test/fixtures/deps_audit/**" under exclude-paths and
+#     no directory is a glob or points into test/fixtures/deps_audit: that lock
+#     is the audit:deps positive control.
+#   - the file's comments name `audit:otp` as the guard.
+#   - Fixture cases prove each rule can fail.
 
 use std/assert
 
@@ -267,12 +292,147 @@ def t5-orphans [] {
   }
 }
 
+def t6-otp-wiring [] {
+  let tasks = (open ($root | path join "mise.toml") | get tasks)
+  for pair in [["audit:otp" "nu scripts/otp-audit.nu"] ["test:otp-audit" "nu test/test-otp-audit.nu"]] {
+    let task = ($tasks | get -o $pair.0)
+    assert ($task != null) $"mise.toml must define [tasks.\"($pair.0)\"]"
+    assert equal ($task | get -o run) $pair.1 $"[tasks.\"($pair.0)\"] must run exactly `($pair.1)`"
+  }
+  let depends = ($tasks | get -o ci | default {} | get -o depends | default [])
+  for t in ["audit:otp" "test:otp-audit"] {
+    assert ($t in $depends) $"tasks.ci.depends must include ($t)"
+  }
+
+  let script = ($root | path join "scripts" "otp-audit.nu")
+  assert ($script | path exists) "scripts/otp-audit.nu must exist"
+  let text = (open --raw $script | lines)
+  for c in [["otp_floor" "28.5.0.8"] ["elixir_floor" "1.19.6"]] {
+    let found = ($text | where {|l| $l =~ $'^\s*const\s+($c.0)\b' })
+    assert equal ($found | length) 1 $"scripts/otp-audit.nu must have exactly one `const ($c.0)` line, got: ($found)"
+    assert equal $found.0 $"const ($c.0) = \"($c.1)\"" $"scripts/otp-audit.nu must set exactly `const ($c.0) = \"($c.1)\"`"
+  }
+
+  let ci_yml = (read ".github/workflows/ci.yml")
+  for needle in ["setup-beam" "otp-version" "docker build" "build-args"] {
+    assert (not ($ci_yml | str contains $needle)) $"ci.yml must not contain `($needle)`: mise.toml is the only OTP pin and release.yml the only image build"
+  }
+
+  let args = (release-build-args (read ".github/workflows/release.yml"))
+  for name in ["OTP_VERSION" "ELIXIR_VERSION" "DEBIAN_VERSION" "BUILDER_IMAGE" "RUNNER_IMAGE"] {
+    assert (not ($args | any {|a| $a | str contains $name })) $"release.yml build-args must not override ($name): audit:otp trusts the Dockerfile ARG default"
+  }
+
+  assert ((read "README.md") | str contains "audit:otp") "README.md must name audit:otp in the quality-gate description"
+}
+
+# Every line of every `build-args: |` block in a workflow (trimmed, non-empty).
+def release-build-args [text: string]: nothing -> list<string> {
+  let ls = ($text | lines)
+  mut out = []
+  mut indent = -1
+  for l in $ls {
+    let lead = (($l | str length) - ($l | str trim --left | str length))
+    if $indent >= 0 {
+      if ($l | str trim) == "" { continue }
+      if $lead > $indent { $out = ($out | append ($l | str trim)); continue }
+      $indent = -1
+    }
+    if ($l | str trim | str starts-with "build-args:") {
+      let inline = ($l | str trim | str replace "build-args:" "" | str trim)
+      if $inline == "|" or $inline == "" { $indent = $lead } else { $out = ($out | append $inline) }
+    }
+  }
+  $out
+}
+
+def release-build-args-cases [] {
+  let yml = "      with:\n          build-args: |\n            APP_VERSION=1\n            OTP_VERSION=28.3.2\n\n      # next\n      - name: x\n"
+  assert equal (release-build-args $yml) ["APP_VERSION=1" "OTP_VERSION=28.3.2"] "release-build-args reads a block scalar and stops at the dedent"
+  assert equal (release-build-args "build-args: OTP_VERSION=1\n") ["OTP_VERSION=1"] "release-build-args reads an inline value"
+  assert equal (release-build-args "      with:\n          push: true\n") [] "no build-args key reads as no args"
+}
+
+const deps_control = "test/fixtures/deps_audit"
+
+def dep-dirs [u: record]: nothing -> list {
+  [($u | get -o directory | default "")] | append ($u | get -o directories | default []) | each {|d| $d | into string }
+}
+
+# Every rule as {name, ok}.
+def dependabot-rules [cfg: record]: nothing -> list<record<name: string, ok: bool>> {
+  let ups = ($cfg | get -o updates | default [])
+  let mix = ($ups | where {|u| ($u | get -o package-ecosystem) == "mix" })
+  [
+    {name: "version is 2", ok: (($cfg | get -o version) == 2)}
+    {name: "updates cover exactly github-actions and mix", ok: (($ups | each {|u| $u | get -o package-ecosystem } | sort) == ["github-actions" "mix"])}
+    {name: "every entry has a weekly schedule", ok: (($ups | is-not-empty) and ($ups | all {|u| ($u | get -o schedule.interval) == "weekly" }))}
+    {name: "every entry has directory / and no directories", ok: (($ups | is-not-empty) and ($ups | all {|u| ($u | get -o directory) == "/" and ($u | get -o directories) == null }))}
+    {name: "no directory is a glob", ok: ($ups | all {|u| dep-dirs $u | all {|d| not ($d | str contains "*") } })}
+    {name: $"no entry points into ($deps_control)", ok: ($ups | all {|u| dep-dirs $u | all {|d| not ($d | str contains $deps_control) } })}
+    {name: $"the mix entry excludes ($deps_control)/**", ok: (($mix | length) == 1 and ($mix | all {|u| $"($deps_control)/**" in ($u | get -o exclude-paths | default []) }))}
+  ]
+}
+
+def dependabot-errors [cfg: record]: nothing -> list<string> {
+  dependabot-rules $cfg | where {|r| not $r.ok } | get name
+}
+
+def fx-entry [eco: string]: nothing -> record {
+  {package-ecosystem: $eco, directory: "/", schedule: {interval: "weekly"}}
+}
+
+def fx-dependabot []: nothing -> record {
+  {version: 2, updates: [((fx-entry "mix") | merge {exclude-paths: [$"($deps_control)/**"]}) (fx-entry "github-actions")]}
+}
+
+def fx-with [cfg: record, eco: string, f: closure]: nothing -> record {
+  $cfg | update updates {|c| $c.updates | each {|u| if ($u | get -o package-ecosystem) == $eco { do $f $u } else { $u } } }
+}
+
+def dependabot-fixture-cases [] {
+  let ok = (fx-dependabot)
+  assert equal (dependabot-errors $ok) [] "fixture: the planned dependabot.yml must pass"
+  let cases = [
+    ["a missing exclude-paths" (fx-with $ok "mix" {|u| $u | reject exclude-paths })]
+    ["a mix directory on the control fixture" (fx-with $ok "mix" {|u| $u | update directory $"/($deps_control)/positive_control" })]
+    ["a glob directory" (fx-with $ok "github-actions" {|u| $u | update directory "/**" })]
+    ["a `directories` list" (fx-with $ok "mix" {|u| $u | reject directory | insert directories ["/"] })]
+    ["a daily schedule" (fx-with $ok "mix" {|u| $u | update schedule {interval: "daily"} })]
+    ["an extra docker entry" ($ok | update updates {|c| $c.updates | append (fx-entry "docker") })]
+    ["a missing github-actions entry" ($ok | update updates {|c| $c.updates | where {|u| $u.package-ecosystem == "mix" } })]
+    ["an entry with no package-ecosystem" ($ok | update updates {|c| $c.updates | append {directory: "/"} })]
+    ["version 1" ($ok | update version 1)]
+    ["an empty config" {}]
+  ]
+  for c in $cases {
+    let errs = (try { dependabot-errors $c.1 } catch {|e| [$"crashed: ($e.msg)"] })
+    assert (not ($errs | is-empty)) $"fixture: ($c.0) must fail"
+    assert (not ($errs | any {|x| $x | str starts-with "crashed" })) $"fixture: ($c.0) must fail without crashing: ($errs)"
+  }
+}
+
+def t7-dependabot [] {
+  dependabot-fixture-cases
+  let path = ($root | path join ".github" "dependabot.yml")
+  assert ($path | path exists) ".github/dependabot.yml must exist"
+  let raw = (open --raw $path)
+  let cfg = (try { $raw | from yaml } catch { null })
+  assert (($cfg | describe) =~ '^record') ".github/dependabot.yml must parse to a mapping"
+  let errs = (dependabot-errors $cfg)
+  assert equal $errs [] $"dependabot.yml rules failed: ($errs | str join '; ')"
+  let comments = ($raw | lines | where {|l| $l | str trim | str starts-with "#" } | str join "\n")
+  assert ($comments | str contains "audit:otp") ".github/dependabot.yml comments must name audit:otp as the OTP guard"
+}
+
 def main [] {
   let results = [
     {name: "T2 wiring", run: {|| t2-wiring }}
     {name: "T3 allow-list parity", run: {|| t3-parity }}
     {name: "T4 doc parity", run: {|| t4-doc }}
     {name: "T5 no orphans", run: {|| t5-orphans }}
+    {name: "T6 OTP gate wiring", run: {|| release-build-args-cases; t6-otp-wiring }}
+    {name: "T7 dependabot", run: {|| t7-dependabot }}
   ] | each {|t|
     try {
       do $t.run
