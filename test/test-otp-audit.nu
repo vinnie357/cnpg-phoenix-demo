@@ -342,7 +342,7 @@ def elixir-verdict-cases [] {
   # pin
   for bad in [null "latest" "" "x.y-otp-28"] {
     let v = (elixir-verdict $efloor $bad $floor [(eimg "1.19.6")])
-    assert equal $v.pass false $"elixir pin ($bad) must fail (and not raise)"
+    assert equal $v.pass false $"elixir pin ($bad) must fail \(and not raise\)"
     assert (any-reason $v "elixir pin missing or not numeric") $"elixir pin ($bad) reason; got: ($v.reasons)"
   }
   let v = (elixir-verdict $efloor "latest" $floor [])
@@ -627,7 +627,7 @@ def end-to-end-cases [] {
     let r = (do $run ["--root" $pass_root "--elixir-floor" "1.19.7"] $ok8)
     do $assert_fail $r "--elixir-floor 1.19.7" ["elixir pin 1.19.6 below floor 1.19.7" "image Dockerfile:2 Elixir 1.19.6 below floor 1.19.7"]
     let r = (do $run ["--root" (fixture $dir "ex-above" (mise-toml "28.5.0.8" "1.19.10-otp-28") {Dockerfile: (dockerfile "28.5.0.8" "1.19.10")})] $ok8)
-    assert equal $r.exit_code 0 $"E8 elixir 1.19.10 (numeric above floor) must pass; stdout: ($r.stdout) stderr: ($r.stderr)"
+    assert equal $r.exit_code 0 $"E8 elixir 1.19.10 \(numeric above floor\) must pass; stdout: ($r.stdout) stderr: ($r.stderr)"
     assert ($r.last | str ends-with "elixir_floor=1.19.6 elixir_pin=1.19.10-otp-28 elixir_images=Dockerfile:1.19.10") $"E8 PASS line names the elixir pin; got: ($r.last)"
 
     # ---- defaults: no --root, no --floor; real repo files; fake erl prints the repo pin.
